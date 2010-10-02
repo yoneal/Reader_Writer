@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            xmlns:jxb="http://java.sun.com/xml/ns/jaxb"
+            jxb:version="2.0">
+	
+	<xsd:element name="message" type="Message"/>
+	
+	<xsd:simpleType name="MessageType">
+		<xsd:restriction base="xsd:string">
+			<xsd:enumeration value="Beacon"/>
+			<xsd:enumeration value="Echo"/>
+			<xsd:enumeration value="Leave"/>
+			<xsd:enumeration value="WriteRequest"/>
+			<xsd:enumeration value="WriteResponse"/>
+			<xsd:enumeration value="ReadRequest"/>
+			<xsd:enumeration value="ReadResponse"/>
+			<xsd:enumeration value="Release"/>
+			<xsd:enumeration value="Ack"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+
+	<xsd:simpleType name="ErrorType">
+		<xsd:restriction base="xsd:string">
+			<xsd:enumeration value="Success"/>
+			<xsd:enumeration value="XML_Error"/>
+			<xsd:enumeration value="Queued"/>
+			<xsd:enumeration value="Denied"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+	
+	<!-- <xsd:complexType name="TimeType"> -->
+	
+	<xsd:complexType name="EchoParam">
+		<xsd:sequence>
+			<xsd:element name="return" type="ErrorType"/>
+			<xsd:element name="groupmembers" type="xsd:string" minOccurs="1" maxOccurs="unbounded"/>
+		</xsd:sequence>
+	</xsd:complexType>	
+
+	<xsd:complexType name="ReadRequestParam">
+		<xsd:sequence>
+			<xsd:element name="return" type="ErrorType"/>
+			<xsd:element name="fileurn" type="xsd:string"/>
+		</xsd:sequence>
+	</xsd:complexType>	
+
+	<xsd:complexType name="ReadResponseParam">
+		<xsd:sequence>
+			<xsd:element name="return" type="ErrorType"/>
+		</xsd:sequence>
+	</xsd:complexType>	
+		
+	<xsd:complexType name="WriteRequestParam">
+		<xsd:sequence>
+			<xsd:element name="return" type="ErrorType"/>
+			<xsd:element name="queue" type="xsd:int" minOccurs="0" maxOccurs="unbounded"/>
+		</xsd:sequence>
+	</xsd:complexType>	
+		
+	<xsd:complexType name="Message">
+		<xsd:sequence>
+			<xsd:element name="procid" type="xsd:string"/>
+			<xsd:element name="msgid" type="xsd:unsignedLong"/>
+			<xsd:element name="timestamp" type="xsd:unsignedLong"/>
+			<xsd:element name="msgtype" type="MessageType"/>
+			<xsd:element name="param" type="xsd:anyType" minOccurs="0"/>
+		</xsd:sequence>
+	</xsd:complexType>
+	
+</xsd:schema>
