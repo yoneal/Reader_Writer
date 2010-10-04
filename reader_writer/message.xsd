@@ -1,69 +1,173 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
-            xmlns:jxb="http://java.sun.com/xml/ns/jaxb"
-            jxb:version="2.0">
+<xsd:schema jxb:version="2.0" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jxb="http://java.sun.com/xml/ns/jaxb">
 	
 	<xsd:element name="message" type="Message"/>
 	
 	<xsd:simpleType name="MessageType">
 		<xsd:restriction base="xsd:string">
-			<xsd:enumeration value="Beacon"/>
-			<xsd:enumeration value="Echo"/>
-			<xsd:enumeration value="Leave"/>
+			<xsd:enumeration value="Ack"/>
+			<xsd:enumeration value="Confirm"/>
+			<xsd:enumeration value="Nack"/>
+			<xsd:enumeration value="NewList"/>
+			<xsd:enumeration value="ListChangeRequest"/>
 			<xsd:enumeration value="WriteRequest"/>
 			<xsd:enumeration value="WriteResponse"/>
 			<xsd:enumeration value="ReadRequest"/>
 			<xsd:enumeration value="ReadResponse"/>
 			<xsd:enumeration value="Release"/>
-			<xsd:enumeration value="Ack"/>
 		</xsd:restriction>
 	</xsd:simpleType>
 
 	<xsd:simpleType name="ErrorType">
 		<xsd:restriction base="xsd:string">
-			<xsd:enumeration value="Success"/>
+			<xsd:enumeration value="Valid"/>
 			<xsd:enumeration value="XML_Error"/>
+			<xsd:enumeration value="Net_Error"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+
+	<xsd:simpleType name="ChangeViewCommands">
+		<xsd:restriction base="xsd:string">
+			<xsd:enumeration value="Join"/>
+			<xsd:enumeration value="Leave"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+
+	<xsd:simpleType name="FileAccessResult">
+		<xsd:restriction base="xsd:string">
+			<xsd:enumeration value="Success"/>
 			<xsd:enumeration value="Queued"/>
 			<xsd:enumeration value="Denied"/>
 		</xsd:restriction>
 	</xsd:simpleType>
 	
+	<xsd:complexType name="ViewIdentity">
+		<xsd:sequence>
+			<xsd:element name="procid" type="ProcessIdentity"/>
+			<xsd:element name="counter" type="xsd:unsignedLong"/>
+		</xsd:sequence>
+	</xsd:complexType>	
+	
 	<!-- <xsd:complexType name="TimeType"> -->
 	
-	<xsd:complexType name="EchoParam">
+	<xsd:complexType name="ParamType">
+		<xsd:attribute name="status" type="ErrorType"/>
+	</xsd:complexType>
+
+	<xsd:complexType name="ProcessIdentity">
 		<xsd:sequence>
-			<xsd:element name="return" type="ErrorType"/>
-			<xsd:element name="groupmembers" type="xsd:string" minOccurs="1" maxOccurs="unbounded"/>
+			<xsd:element name="ip" type="xsd:string"/>
+			<xsd:element name="port" type="xsd:int"/>
 		</xsd:sequence>
+	</xsd:complexType>
+	
+	<xsd:complexType name="MessageIdentity">
+		<xsd:sequence>
+			<xsd:element name="procid" type="ProcessIdentity"/>
+			<xsd:element name="msgseq" type="xsd:unsignedLong"/>
+		</xsd:sequence>
+	</xsd:complexType>
+	
+	<xsd:complexType name="Ack">
+		<xsd:complexContent>
+			<xsd:extension base="ParamType">
+				<xsd:sequence>
+					<xsd:element name="timestamp" type="xsd:unsignedLong"/>
+					<xsd:element name="data_packets" type="MessageIdentity" minOccurs="1" maxOccurs="unbounded"/>
+					<xsd:element name="next_token" type="ProcessIdentity"/>
+				</xsd:sequence>
+			</xsd:extension>
+		</xsd:complexContent>
+	</xsd:complexType>
+
+	<xsd:complexType name="Confirm">
+		<xsd:complexContent>
+			<xsd:extension base="ParamType">
+			</xsd:extension>
+		</xsd:complexContent>
+	</xsd:complexType>
+
+	<xsd:complexType name="Nack">
+		<xsd:complexContent>
+			<xsd:extension base="ParamType">
+				<xsd:sequence>
+					<xsd:element name="sender" type="xsd:string"/>
+					<xsd:element name="missing_msgid" type="MessageIdentity"/>
+				</xsd:sequence>
+			</xsd:extension>
+		</xsd:complexContent>
+	</xsd:complexType>
+
+	<xsd:complexType name="ChangeList">
+		<xsd:complexContent>
+			<xsd:extension base="ParamType">
+				<xsd:sequence>
+					<xsd:element name="command" type="ChangeViewCommands"/>
+				</xsd:sequence>
+			</xsd:extension>
+		</xsd:complexContent>
+	</xsd:complexType>
+	
+	<xsd:complexType name="NewList">
+		<xsd:complexContent>
+			<xsd:extension base="ParamType">
+				<xsd:sequence>
+					<xsd:element name="new_viewid" type="ViewIdentity"/>
+					<xsd:element name="members" type="ProcessIdentity" minOccurs="1" maxOccurs="unbounded"/>
+				</xsd:sequence>
+			</xsd:extension>
+		</xsd:complexContent>
 	</xsd:complexType>	
+
+	<xsd:complexType name="WriteRequestParam">
+		<xsd:complexContent>
+			<xsd:extension base="ParamType">
+				<xsd:sequence>
+					<xsd:element name="fileurn" type="xsd:string"/>
+				</xsd:sequence>			
+			</xsd:extension>
+		</xsd:complexContent>
+	</xsd:complexType>
+
+	<xsd:complexType name="WriteResponseParam">
+		<xsd:complexContent>
+			<xsd:extension base="ParamType">
+				<xsd:sequence>
+					<xsd:element name="return" type="FileAccessResult"/>
+					<xsd:element name="fileurn" type="xsd:string"/>
+				</xsd:sequence>			
+			</xsd:extension>
+		</xsd:complexContent>
+	</xsd:complexType>
 
 	<xsd:complexType name="ReadRequestParam">
-		<xsd:sequence>
-			<xsd:element name="return" type="ErrorType"/>
-			<xsd:element name="fileurn" type="xsd:string"/>
-		</xsd:sequence>
+		<xsd:complexContent>
+			<xsd:extension base="ParamType">
+				<xsd:sequence>
+					<xsd:element name="fileurn" type="xsd:string"/>
+				</xsd:sequence>			
+			</xsd:extension>
+		</xsd:complexContent>
+	</xsd:complexType>
+	
+	<xsd:complexType name="ReadResponseParam">
+		<xsd:complexContent>
+			<xsd:extension base="ParamType">
+				<xsd:sequence>
+					<xsd:element name="return" type="FileAccessResult"/>
+					<xsd:element name="fileurn" type="xsd:string"/>
+				</xsd:sequence>			
+			</xsd:extension>
+		</xsd:complexContent>
 	</xsd:complexType>	
 
-	<xsd:complexType name="ReadResponseParam">
-		<xsd:sequence>
-			<xsd:element name="return" type="ErrorType"/>
-		</xsd:sequence>
-	</xsd:complexType>	
-		
-	<xsd:complexType name="WriteRequestParam">
-		<xsd:sequence>
-			<xsd:element name="return" type="ErrorType"/>
-			<xsd:element name="queue" type="xsd:int" minOccurs="0" maxOccurs="unbounded"/>
-		</xsd:sequence>
-	</xsd:complexType>	
-		
 	<xsd:complexType name="Message">
 		<xsd:sequence>
-			<xsd:element name="procid" type="xsd:string"/>
-			<xsd:element name="msgid" type="xsd:unsignedLong"/>
+			<xsd:element name="viewid" type="ViewIdentity"/>
+			<xsd:element name="msgid" type="MessageIdentity"/>
 			<xsd:element name="timestamp" type="xsd:unsignedLong"/>
 			<xsd:element name="msgtype" type="MessageType"/>
-			<xsd:element name="param" type="xsd:anyType" minOccurs="0"/>
+			<xsd:element name="param" type="xsd:anyType" minOccurs="0" maxOccurs="1"/>
 		</xsd:sequence>
 	</xsd:complexType>
 	
