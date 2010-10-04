@@ -14,22 +14,10 @@ import javax.xml.transform.stream.StreamSource;
 
 /**
  * @author neal
- * Handles overall communication, an interface for the application 
+ * Handles overall communication, an interface for the application.
  */
 public class CommManager implements Runnable, CommInterface 
 {
-	/**
-	 * Default port number <int> for the multicast group
-	 */
-	public static final int miPort = 4445; 
-	/**
-	 * Default port number <int> for the multicast group
-	 */
-	public static final String msPort = "4445";
-	/**
-	 * Default multicast address of the multicast group
-	 */
-	public static final String msMuAddress = "230.0.0.1";
 	/**
 	 * Default timeout for receiving datagrams on a socket
 	 */
@@ -47,33 +35,45 @@ public class CommManager implements Runnable, CommInterface
 	 */
 	protected String name;
 	/**
-	 * Multicast Socket
+	 * Debug module
 	 */
-	protected MulticastSocket mSocket = null;
-	protected DatagramSocket mUniSocket = null;
-	protected InetAddress mAddress = InetAddress.getByName(msMuAddress);
 	protected UserInterface mDebug = null;
 	/**
 	 * Queue where the application place messages it wants to send
 	 */
-	protected final LinkedBlockingQueue<Message> mSendQueue;
+	protected final LinkedBlockingQueue<Message> mUnicastSendQueue;
 	/**
-	 * Queue where the comm manager place unordered messages
+	 * Queue where the application place messages it wants to send
+	 */
+	protected final LinkedBlockingQueue<Message> mMulticastSendQueue;
+	/**
+	 * Queue where all messages are received
 	 */
 	protected final LinkedBlockingQueue<Message> mRecvQueue;
+	/**
+	 * The ordered queue where data messages reside and will be ordered
+	 */
+	protected final LinkedBlockingQueue<Message> mUnOrderedQueue;
 	/**
 	 * The ordered queue where messages will be eventually sent to the application
 	 */
 	protected final LinkedBlockingQueue<Message> mOrderedQueue;
 	/**
+	 * Queue where the application place messages it wants to send
+	 */
+	protected final LinkedBlockingQueue<Message> mSendQueue;
+	/**
 	 * The application will wait for messages in this queue
 	 */
 	protected final LinkedBlockingQueue<Message> mProcessQueue;
 	
-	private JAXBContext jaxbContext;
-	private ObjectFactory of;
-	private Marshaller marshaller;
-	private Unmarshaller unmarshaller;
+	protected MulticastHandler mMHandler;
+	protected UnicastHandler mUHandler;
+	
+//	private JAXBContext jaxbContext;
+//	private ObjectFactory of;
+//	private Marshaller marshaller;
+//	private Unmarshaller unmarshaller;
 	
 	/**
 	 * 
@@ -89,13 +89,7 @@ public class CommManager implements Runnable, CommInterface
 	public CommManager(String name, String pAddress, int pPort, UserInterface ui) throws IOException, JAXBException
 	{
 		this.name = name;
-		/**
-		 * Set multicast settings
-		 */
-		mAddress = InetAddress.getByName(pAddress);
-		mSocket = new MulticastSocket(pPort);
-		mSocket.setSoTimeout(miRecvTimeout);
-		mSocket.joinGroup(mAddress);
+		
 		/**
 		 * Set unicast settings
 		 */
@@ -109,67 +103,12 @@ public class CommManager implements Runnable, CommInterface
 		mRecvQueue = new LinkedBlockingQueue<Message>();
 		mOrderedQueue = new LinkedBlockingQueue<Message>();
 		mProcessQueue = new LinkedBlockingQueue<Message>();
-		jaxbContext = JAXBContext.newInstance("reader_writer.message");
-		of = new ObjectFactory();
-		marshaller = jaxbContext.createMarshaller();
-		unmarshaller = jaxbContext.createUnmarshaller();
+//		jaxbContext = JAXBContext.newInstance("reader_writer.message");
+//		of = new ObjectFactory();
+//		marshaller = jaxbContext.createMarshaller();
+//		unmarshaller = jaxbContext.createUnmarshaller();
 	}
 	
-	/**
-	 * 
-	 * @return
-	 */
-	public int connectToGroup()
-	{
-		try
-		{
-			mSocket.joinGroup(mAddress);
-		}catch (IOException ioe)
-		{
-			System.out.println(ioe.toString());
-			ioe.printStackTrace();
-			return 1;
-		}
-		return 0;
-	}
-	
-	/**
-	 * Check if the specified port is available, shamelessly ripped from the Apache Mina project
-	 *
-	 * @param port the port to check for availability
-	 * @return true if port is available and false if port is not available
-	 */
-	public static boolean available(int port) {
-	    if (port < miMinPortNumber || port > miMaxPortNumber) {
-	        throw new IllegalArgumentException("Invalid port number range: " + port);
-	    }
-
-	    ServerSocket ss = null;
-	    DatagramSocket ds = null;
-	    try {
-	        ss = new ServerSocket(port);
-	        ss.setReuseAddress(true);
-	        ds = new DatagramSocket(port);
-	        ds.setReuseAddress(true);
-	        return true;
-	    } catch (IOException e) {
-	    } finally {
-	        if (ds != null) {
-	            ds.close();
-	        }
-
-	        if (ss != null) {
-	            try {
-	                ss.close();
-	            } catch (IOException e) {
-	                /* should not be thrown */
-	            }
-	        }
-	    }
-
-	    return false;
-	}
-
 	/**
 	 * 
 	 */
@@ -333,4 +272,11 @@ public class CommManager implements Runnable, CommInterface
 			return null;
 		}
 	}
+	
+	public int insertToRecvQueue(Message message)
+	{
+		return 0;
+	}
+	
+	
 }
