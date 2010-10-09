@@ -69,7 +69,7 @@ public class MainPanel extends JPanel implements UserInterface, ActionListener
 		
 		lmSent = new DefaultListModel();
 		lstSent = new JList(lmSent);
-		lstSent.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+		lstSent.setSelectionMode(ListSelectionModel.SINGLE_INTERVAL_SELECTION);
 		spSent = new JScrollPane(lstSent);
 		Border bdrSent = BorderFactory.createEtchedBorder();
 		spSent.setBorder(BorderFactory.createTitledBorder(bdrSent,"Send:") );
@@ -77,7 +77,7 @@ public class MainPanel extends JPanel implements UserInterface, ActionListener
 	
 		lmRecv = new DefaultListModel();
 		lstRecv = new JList(lmRecv);
-		lstRecv.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+		lstRecv.setSelectionMode(ListSelectionModel.SINGLE_INTERVAL_SELECTION);
 		spRecv = new JScrollPane(lstRecv);
 		Border bdrRecv = BorderFactory.createEtchedBorder();
 		spRecv.setBorder(BorderFactory.createTitledBorder(bdrGroup,"Receive:") );
@@ -85,7 +85,7 @@ public class MainPanel extends JPanel implements UserInterface, ActionListener
 		
 		lmProcess = new DefaultListModel();
 		lstProcess = new JList(lmProcess);
-		lstProcess.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+		lstProcess.setSelectionMode(ListSelectionModel.SINGLE_INTERVAL_SELECTION);
 		spProcess = new JScrollPane(lstProcess);
 		Border bdrProcess = BorderFactory.createEtchedBorder();
 		spProcess.setBorder(BorderFactory.createTitledBorder(bdrProcess,"Reader/Writer:") );

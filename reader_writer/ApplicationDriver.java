@@ -19,20 +19,27 @@ public class ApplicationDriver implements Runnable
 {
 	CommInterface mCommInterface;
 	ObjectFactory of;
+	ProcessIdentity myID;
+	BigInteger mMsgSeq;
 	
 	ApplicationDriver(CommInterface comm_interface)
 	{
 		mCommInterface = comm_interface;
 		of = new ObjectFactory();
+		mMsgSeq = new BigInteger("0");
 	}
 	
 	public void run()
 	{
+		/**
+		 * <ul>
+		 * <li> Connect to the Communication Interface
+		 */
+		mCommInterface.connect();
 		while (true)
 		{
 			/**
-			 * <>
-			 * Check if application is to be unloaded
+			 * <li> Check if application is to be unloaded
 			 */
 			if (MainDriver.QuitFlag.get())
 			{
@@ -40,14 +47,13 @@ public class ApplicationDriver implements Runnable
 				break;
 			}
 			
-			try
+			try // ToDo: add own messeage sequence numbers
 			{
 				ReadRequestParam rrp = of.createReadRequestParam();
 				rrp.setFileurn("file1");
 				Message m = of.createMessage();
-				m.setMsgid(new BigInteger("1"));
+				mMsgSeq.add(BigInteger.ONE);
 				m.setMsgtype(MessageType.READ_REQUEST);
-				m.setProcid("1");
 				m.setParam(rrp);
 				mCommInterface.sendMessage(m);
 				System.out.println("Sleeping for " + ((2 + (int)(Math.random()*((5 - 2) + 1))) * 1000));

@@ -91,7 +91,6 @@
 		<xsd:complexContent>
 			<xsd:extension base="ParamType">
 				<xsd:sequence>
-					<xsd:element name="sender" type="xsd:string"/>
 					<xsd:element name="missing_msgid" type="MessageIdentity"/>
 				</xsd:sequence>
 			</xsd:extension>
@@ -112,6 +111,9 @@
 		<xsd:complexContent>
 			<xsd:extension base="ParamType">
 				<xsd:sequence>
+					<xsd:element name="timestamp" type="xsd:unsignedLong"/>
+					<xsd:element name="data_packets" type="MessageIdentity" minOccurs="1" maxOccurs="unbounded"/>
+					<xsd:element name="next_token" type="ProcessIdentity"/>
 					<xsd:element name="new_viewid" type="ViewIdentity"/>
 					<xsd:element name="members" type="ProcessIdentity" minOccurs="1" maxOccurs="unbounded"/>
 				</xsd:sequence>
@@ -123,6 +125,7 @@
 		<xsd:complexContent>
 			<xsd:extension base="ParamType">
 				<xsd:sequence>
+					<xsd:element name="msgid" type="xsd:integer"/>
 					<xsd:element name="fileurn" type="xsd:string"/>
 				</xsd:sequence>			
 			</xsd:extension>
@@ -133,6 +136,7 @@
 		<xsd:complexContent>
 			<xsd:extension base="ParamType">
 				<xsd:sequence>
+					<xsd:element name="msgid" type="xsd:integer"/>
 					<xsd:element name="return" type="FileAccessResult"/>
 					<xsd:element name="fileurn" type="xsd:string"/>
 				</xsd:sequence>			
@@ -144,6 +148,7 @@
 		<xsd:complexContent>
 			<xsd:extension base="ParamType">
 				<xsd:sequence>
+					<xsd:element name="msgid" type="xsd:integer"/>
 					<xsd:element name="fileurn" type="xsd:string"/>
 				</xsd:sequence>			
 			</xsd:extension>
@@ -154,6 +159,7 @@
 		<xsd:complexContent>
 			<xsd:extension base="ParamType">
 				<xsd:sequence>
+					<xsd:element name="msgid" type="xsd:integer"/>
 					<xsd:element name="return" type="FileAccessResult"/>
 					<xsd:element name="fileurn" type="xsd:string"/>
 				</xsd:sequence>			

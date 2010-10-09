@@ -43,8 +43,8 @@ public class SetupPanel extends JPanel implements ActionListener
 		// Setup labels and buttons
 		JLabel lGroup = new JLabel("Group:"); 
 		JLabel lPort = new JLabel("Port:");
-		tfGroup = new JTextField(CommManager.msMuAddress);
-		tfPort = new JTextField(CommManager.msPort);
+		tfGroup = new JTextField(MulticastHandler.msMuAddress);
+		tfPort = new JTextField(MulticastHandler.msPort);
 		bConnect = new JButton("Connect");
 		bClear = new JButton("Clear");
 		
@@ -97,8 +97,8 @@ public class SetupPanel extends JPanel implements ActionListener
 				return;
 			}
 			// Start the reader/writer app
-			ApplicationDriver adReaderWriter = new ApplicationDriver(cmCommManager);
-			new Thread(adReaderWriter).start();
+//			ApplicationDriver adReaderWriter = new ApplicationDriver(cmCommManager);
+//			new Thread(adReaderWriter).start();
 		}
 	}
 }
