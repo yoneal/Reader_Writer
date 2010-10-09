@@ -137,8 +137,8 @@ public class MainPanel extends JPanel implements UserInterface, ActionListener
 	public void printOutSendReport(String send_report)
 	{
 		lmSent.addElement(send_report);
-		lstSent.setModel(lmSent);
-		lstSent.revalidate();
+		//lstSent.setModel(lmSent);
+		//lstSent.revalidate();
 		lstSent.repaint();
 	}
 	public void printOutRecvReport(String recv_report)
@@ -148,6 +148,7 @@ public class MainPanel extends JPanel implements UserInterface, ActionListener
 	}
 	public void printOutProcessReport(String proc_report)
 	{
-		
+		lmProcess.addElement(proc_report);
+		this.fMainFrame.repaint();
 	}
 }

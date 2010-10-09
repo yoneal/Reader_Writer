@@ -175,7 +175,6 @@ public class MulticastHandler implements Runnable
 			m = mMulticastSendQueue.poll();
 			if (m != null)
 			{
-				System.out.println("got a message to send");
 				/**
 				 * <ol>
 				 * <li> Marshall the message into xml

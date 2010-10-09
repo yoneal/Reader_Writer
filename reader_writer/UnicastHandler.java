@@ -70,6 +70,7 @@ public class UnicastHandler implements Runnable
 		mUnicastSendQueue = new LinkedBlockingQueue<UnicastMessage>();
 		mComm = cm;
 		mDebug = ui;
+		System.out.println("Unicast Port: " + miPort);
 	}
 	
 	/**
@@ -193,7 +194,6 @@ public class UnicastHandler implements Runnable
 			if (um != null)
 			{
 				m = um.getMessage();
-				System.out.println("got a message to send on unicast");
 				/**
 				 * <ol>
 				 * <li> Marshall the message into xml

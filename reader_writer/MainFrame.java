@@ -43,6 +43,7 @@ public class MainFrame extends JFrame
 		{
 			MainDriver.QuitFlag.set(true);
 			System.out.println("Application is now closing..");
+			// Wait for communication handler to finish
 			System.exit(0);
 		}
 	}
