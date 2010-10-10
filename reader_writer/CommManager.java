@@ -9,6 +9,7 @@ import java.math.BigInteger;
 import java.net.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import javax.xml.bind.*;
 //import javax.xml.transform.stream.StreamSource;
 
@@ -47,11 +48,16 @@ public class CommManager implements Runnable, CommInterface
 	/**
 	 * Timeout to determine if the application should create its own group
 	 */
-	public static final int miJoinTimeout = 3000;
+	public static final int miJoinTimeout = 1500;
 	/**
 	 * Number times to retry sending of ChangeList (join) message
 	 */
-	public static final int miJoinRetry = 3;	
+	public static final int miJoinRetry = 3;
+	/**
+	 * Timeout to determine if the application should retry sending
+	 * intention to leave the group
+	 */
+	public static final int miLeaveTimeout = 1500;	
 	/**
 	 * Timeout for polling queues
 	 */
@@ -68,6 +74,14 @@ public class CommManager implements Runnable, CommInterface
 	 * Timeout for sending ack when max data messages is not reached
 	 */
 	public static final int miInitialAckSendTimeout = 250;		
+	/**
+	 * Flag to indicate if socket handlers should unload
+	 */
+	public static final AtomicBoolean CloseCommsFlag = new AtomicBoolean(false);
+	/**
+	 * Timeout for detecting if site is missing
+	 */
+	public static final int miMissingSite = 5000;	
 	
 	/**
 	 * The name of the Communication Manager
@@ -80,7 +94,7 @@ public class CommManager implements Runnable, CommInterface
 	/**
 	 * Queue where all messages are received
 	 */
-	protected final LinkedBlockingQueue<Message> mRecvQueue;
+	protected final LinkedBlockingDeque<Message> mRecvQueue;
 	/**
 	 * The ordered queue where data messages reside and will be ordered
 	 */
@@ -151,6 +165,7 @@ public class CommManager implements Runnable, CommInterface
 		JOIN,
 		MEMBER,
 		TOKEN,
+		CONFIRM,
 		LEAVE
 	}
 	RMP_State mState = RMP_State.JOIN;
@@ -200,7 +215,7 @@ public class CommManager implements Runnable, CommInterface
 		/**
 		 * Set the queues
 		 */
-		mRecvQueue = new LinkedBlockingQueue<Message>();
+		mRecvQueue = new LinkedBlockingDeque<Message>();
 		mUnOrderedQueue = new ArrayList<Message>();
 		mOrderedQueue = new ArrayList<Message>();
 		mSendQueue = new LinkedBlockingQueue<Message>();
@@ -315,6 +330,7 @@ public class CommManager implements Runnable, CommInterface
 		int i = 0;
 		Iterator iterator = mMembers.iterator();
 		ProcessIdentity procid;
+		System.out.println("get next token site");
 		while(iterator.hasNext())
 		{
 			procid = (ProcessIdentity)iterator.next();
@@ -349,6 +365,36 @@ public class CommManager implements Runnable, CommInterface
 	
 	/**
 	 * 
+	 * @param procid
+	 * @return
+	 */
+	private int searchForMember(ProcessIdentity procid, List<ProcessIdentity> member_list)
+	{
+		Iterator iterator = member_list.iterator();
+		ProcessIdentity tmp_procid;
+		int i = 0;
+		while (iterator.hasNext())
+		{
+			tmp_procid = (ProcessIdentity)iterator.next();
+			if (tmp_procid.getIp().compareTo(procid.getIp()) == 0 &&
+					tmp_procid.getPort() == procid.getPort())
+			{
+				break;
+			}
+			i++;
+		}
+		
+		if (i < member_list.size())
+		{
+			return 0;
+		}else
+		{
+			return -1;
+		}
+	}
+	
+	/**
+	 * 
 	 */
 	public void run()
 	{
@@ -359,6 +405,7 @@ public class CommManager implements Runnable, CommInterface
 		ChangeList change_list;
 		long startTime;
 		Iterator iterator;
+		boolean leave_token_flag = false;
 		int i;
 		
 		while (true)
@@ -367,13 +414,19 @@ public class CommManager implements Runnable, CommInterface
 			 * <ul>
 			 * <li> Check if application is to be unloaded
 			 */
-			if (MainDriver.QuitFlag.get())
+			synchronized(MainDriver.UnloadLock)
 			{
-				System.out.println("CommManager: exiting loop");
-				break;
-				//ToDo: Change state to leaving
+				if (MainDriver.QuitFlag.get())
+				{
+					synchronized(mStateLock)
+					{
+						if (mState == RMP_State.TOKEN) leave_token_flag = true;
+						System.out.println("CommManager: exiting loop");
+						mState = RMP_State.LEAVE;
+						
+					}
+				}
 			}
-			
 			/**
 			 * <li> Check state and act accordingly
 			 * <ol>
@@ -388,7 +441,6 @@ public class CommManager implements Runnable, CommInterface
 					System.out.println("CommManager State: Joining a group");
 					mDebug.setStatus("Joining the group");
 					int retry=0;
-					startTime = System.currentTimeMillis();
 
 					/**
 					 * <li> Create the change list message
@@ -409,6 +461,7 @@ public class CommManager implements Runnable, CommInterface
 					 * <li> Insert it into the multicast send queue
 					 */
 					mMHandler.sendMulticastMessage(m);
+					startTime = System.currentTimeMillis();
 					while (true)
 					{
 						/*
@@ -550,6 +603,7 @@ public class CommManager implements Runnable, CommInterface
 							else
 							{
 								mMHandler.sendMulticastMessage(m);
+								startTime = System.currentTimeMillis();
 								retry++;
 							}							
 						}
@@ -674,7 +728,6 @@ public class CommManager implements Runnable, CommInterface
 						}
 						if (recv_msg != null)
 						{
-							System.out.println("got this: " + recv_msg.toString());
 							/**
 							 * <li> Ignore messages belonging to a different group
 							 */
@@ -868,8 +921,297 @@ public class CommManager implements Runnable, CommInterface
 						mMHandler.sendMulticastMessage(m);
 					}
 					/**
+					 * No need to await confirmation if next token site is this one also
+					 */
+					if (getNextTokenSite().getIp().compareTo(mProcID.getIp()) == 0  &&
+							getNextTokenSite().getPort() == mProcID.getPort())
+					{
+						/**
+						 * <li> Change state to member
+						 */
+						synchronized(mStateLock)
+						{
+							System.out.println("CommManager State: Member");
+							mState = RMP_State.MEMBER;
+							mDebug.setStatus("Member");
+						}
+						break;
+					}
+					/**
 					 * <li> ToDo: Wait for confirmation
 					 */
+					startTime = System.currentTimeMillis();
+					while (true)
+					{
+						/**
+						 * <li> Check if next token is gone
+						 */
+						if ((System.currentTimeMillis() - startTime) > miMissingSite)
+						{
+							/**
+							 * <li> Send out a new list indicating that the next site is gone
+							 */
+							/**
+							 * Remove the next token and send out New List
+							 */
+							System.out.println("removing a member!");
+							// find and remove the member
+							iterator = mMembers.iterator();
+							while (iterator.hasNext())
+							{
+								ProcessIdentity proc_id = (ProcessIdentity)iterator.next();
+								if (proc_id.getIp().compareTo(recv_msg.getMsgid().getProcid().getIp()) == 0 &&
+										proc_id.getPort() == recv_msg.getMsgid().getProcid().getPort())
+								{
+									iterator.remove();
+									break;
+								}
+							}
+							nl_message = of.createNewList();
+							// add members
+							iterator = mMembers.iterator();
+							while (iterator.hasNext())
+							{
+								nl_message.getMembers().add((ProcessIdentity)iterator.next());
+							}
+							// create new view id
+							nl_message.setNewViewid(new ViewIdentity());
+							nl_message.getNewViewid().setProcid(mProcID);
+							mViewCounter = mViewCounter.add(BigInteger.ONE);
+							nl_message.getNewViewid().setCounter(new BigInteger(mViewCounter.toByteArray()));
+							nl_message.setNextToken(getNextTokenSite());
+							mGlobalTimestamp = mGlobalTimestamp.add(BigInteger.ONE);
+							nl_message.setTimestamp(new BigInteger(mGlobalTimestamp.toByteArray()));
+							m = of.createMessage();
+							m.setMsgid(of.createMessageIdentity());
+							m.getMsgid().setProcid(mProcID);
+							synchronized(mMsgCounter)
+							{
+								m.getMsgid().setMsgseq(new BigInteger(mMsgCounter.toByteArray()));
+								mMsgCounter = mMsgCounter.add(BigInteger.ONE);
+							}
+							m.setMsgtype(MessageType.NEW_LIST);
+							m.setParam(nl_message);
+							m.setViewid(mViewID);
+							mMHandler.sendMulticastMessage(m);	
+							
+							// get out of confirmation loop
+							break;
+						}
+						
+						try
+						{
+							recv_msg = mRecvQueue.poll(miPollTimeout,TimeUnit.MILLISECONDS);
+						} catch (InterruptedException ie)
+						{
+							// do nothing
+							
+						}
+						if (recv_msg == null) continue;
+						/**
+						 * <li> Ignore messages belonging to a different group
+						 */
+						if (recv_msg.getViewid() != null && compareViewID(recv_msg.getViewid(),mViewID) != 0)
+						{
+							
+							continue;
+						}
+						/**
+						 * <li> Ignore confirm and list change requests, they should be handled by the next token site
+						 */
+						if (recv_msg.getMsgtype() == MessageType.CONFIRM)
+						{
+							continue;
+						}else if (recv_msg.getMsgtype() == MessageType.NACK)
+						{
+							/**
+							 * <li> Respond to NACKs
+							 */
+							nack_message = (Nack)recv_msg.getParam();
+							m = searchForMessage(mOrderedQueue,nack_message.getMissingMsgid());
+							if (m != null && m.getParam() != null)
+							{
+								temp_msg = of.createMessage();
+								temp_msg.setMsgid(m.getMsgid());
+								temp_msg.setMsgtype(m.getMsgtype());
+								temp_msg.setTimestamp(m.getTimestamp());
+								temp_msg.setViewid(m.getViewid());
+								temp_msg.setParam(m.getParam());
+								mUHandler.sendUnicastMessage(temp_msg,recv_msg.getMsgid().getProcid().getIp(),
+										recv_msg.getMsgid().getProcid().getPort() );
+							} 
+						} else if (recv_msg.getMsgtype() == MessageType.LIST_CHANGE_REQUEST)
+						{
+							/**
+							 * <li> Ignore duplicate change list messages
+							 */
+							change_list = (ChangeList)recv_msg.getParam();
+							if (change_list.getCommand() == ChangeViewCommands.JOIN)
+							{
+								// Check if duplicate
+								retry = 0; // just used as flag
+								iterator = mMembers.iterator();
+								while (iterator.hasNext())
+								{
+									ProcessIdentity proc_id = (ProcessIdentity)iterator.next();
+									if (proc_id.getIp().compareTo(recv_msg.getMsgid().getProcid().getIp()) == 0 &&
+											proc_id.getPort() == recv_msg.getMsgid().getProcid().getPort())
+									{
+										retry = 1;
+										break;
+									}
+								}
+								if (retry == 1)
+								{
+									System.out.println("Duplicate join ignored");
+									continue;
+								}
+							} else if (change_list.getCommand() == ChangeViewCommands.LEAVE)
+							{
+								// Check if duplicate
+								retry = 0; // just used as flag
+								iterator = mMembers.iterator();
+								while (iterator.hasNext())
+								{
+									ProcessIdentity proc_id = (ProcessIdentity)iterator.next();
+									if (proc_id.getIp().compareTo(recv_msg.getMsgid().getProcid().getIp() ) == 0 &&
+											proc_id.getPort() == recv_msg.getMsgid().getProcid().getPort())
+									{
+										retry = 1;
+										break;
+									}
+								}
+								if (retry == 0)
+								{
+									System.out.println("Duplicate leave ignored");
+									continue;									
+								}
+							}
+							/**
+							 * 	<li> Check if next token is opting to leave the group
+							 */
+							if (recv_msg.getMsgid().getProcid().getIp().compareTo(getNextTokenSite().getIp()) == 0
+									&& recv_msg.getMsgid().getProcid().getPort() == getNextTokenSite().getPort())
+							{
+								/**
+								 * <li> Remove the next token and send out New List
+								 */
+								System.out.println("removing a member!");
+								// find and remove the member
+								iterator = mMembers.iterator();
+								while (iterator.hasNext())
+								{
+									ProcessIdentity proc_id = (ProcessIdentity)iterator.next();
+									if (proc_id.getIp().compareTo(recv_msg.getMsgid().getProcid().getIp()) == 0 &&
+											proc_id.getPort() == recv_msg.getMsgid().getProcid().getPort())
+									{
+										iterator.remove();
+										break;
+									}
+								}
+								nl_message = of.createNewList();
+								// add members
+								iterator = mMembers.iterator();
+								while (iterator.hasNext())
+								{
+									nl_message.getMembers().add((ProcessIdentity)iterator.next());
+								}
+								// create new view id
+								nl_message.setNewViewid(new ViewIdentity());
+								nl_message.getNewViewid().setProcid(mProcID);
+								mViewCounter = mViewCounter.add(BigInteger.ONE);
+								nl_message.getNewViewid().setCounter(new BigInteger(mViewCounter.toByteArray()));
+								nl_message.setNextToken(getNextTokenSite());
+								mGlobalTimestamp = mGlobalTimestamp.add(BigInteger.ONE);
+								nl_message.setTimestamp(new BigInteger(mGlobalTimestamp.toByteArray()));
+								m = of.createMessage();
+								m.setMsgid(of.createMessageIdentity());
+								m.getMsgid().setProcid(mProcID);
+								synchronized(mMsgCounter)
+								{
+									m.getMsgid().setMsgseq(new BigInteger(mMsgCounter.toByteArray()));
+									mMsgCounter = mMsgCounter.add(BigInteger.ONE);
+								}
+								m.setMsgtype(MessageType.NEW_LIST);
+								m.setParam(nl_message);
+								m.setViewid(mViewID);
+								mMHandler.sendMulticastMessage(m);	
+								
+								// get out of confirmation loop
+								break;
+							}
+						}else if (recv_msg.getMsgtype() == MessageType.NEW_LIST ||
+								recv_msg.getMsgtype() == MessageType.ACK)
+						{
+							/**
+							 * <li> Check if this is the New List that this token site sent
+							 */
+							if (recv_msg.getMsgtype() == MessageType.NEW_LIST &&
+									recv_msg.getMsgid().getProcid().getIp().compareTo(mProcID.getIp()) == 0 &&
+									recv_msg.getMsgid().getProcid().getPort() == mProcID.getPort())
+							{
+								System.out.println("got new list");
+								nl_message = (NewList)recv_msg.getParam();
+								/**
+								 * <li> Get new timestamp
+								 */
+								mGlobalTimestamp = nl_message.getTimestamp();
+								/**
+								 * <li> Apply membership changes
+								 */
+								mViewID = nl_message.getNewViewid();
+								mMembers = new ArrayList<ProcessIdentity>();
+								iterator = nl_message.getMembers().iterator();
+								while (iterator.hasNext())
+								{
+									mMembers.add((ProcessIdentity)iterator.next());
+								}
+								/**
+								 * <li> Add New List message to the ordered queue
+								 */
+								recv_msg.setTimestamp(new BigInteger(mGlobalTimestamp.toByteArray()));
+								mOrderedQueue.add(recv_msg);
+								mNumberAcks++;
+								mLatestACK = recv_msg;
+								/**
+								 * <li> Order data messages or add null messages at the unordered queue 
+								 * according to the message ids attached to ACK
+								 */
+								iterator = nl_message.getDataPackets().iterator();
+								while (iterator.hasNext())
+								{
+									MessageIdentity message_id = (MessageIdentity)iterator.next();
+									mGlobalTimestamp = mGlobalTimestamp.add(BigInteger.ONE);
+									m = searchForMessage(mUnOrderedQueue, message_id);
+									if (m != null)
+									{
+										mUnOrderedQueue.remove(m);
+										m.setTimestamp(new BigInteger(mGlobalTimestamp.toByteArray()));
+										mOrderedQueue.add(m);
+									}else
+									{
+										m = of.createMessage();
+										m.setMsgid(message_id);
+										m.setParam(null);
+										mOrderedQueue.add(m);
+									}
+								}
+							} else if (recv_msg.getMsgid().getProcid().getIp().compareTo(getNextTokenSite().getIp()) == 0
+									&& recv_msg.getMsgid().getProcid().getPort() == getNextTokenSite().getPort())
+							{
+								// requeue at the front the recv_msg
+								mRecvQueue.addFirst(recv_msg);
+								// get out of the confirmation loop
+								break; 
+							}
+						}else
+						{
+							/**
+							 * <li> Enqueue data messages unto Unordered queue
+							 */
+							mUnOrderedQueue.add(recv_msg);
+						}
+					}
 					/**
 					 * <li> Change state to member
 					 */
@@ -1145,220 +1487,140 @@ public class CommManager implements Runnable, CommInterface
 				 * <ul>
 				 */
 				case LEAVE:
-//					System.out.println("CommManager State: Leaving the group");
-//					mDebug.setStatus("Joining the group");
-//					int retry=0;
-//					startTime = System.currentTimeMillis();
-//
-//					/**
-//					 * <li> Create the change list message
-//					 */
-//					change_list = of.createChangeList();
-//					change_list.setCommand(ChangeViewCommands.JOIN);
-//					m = of.createMessage();
-//					m.setMsgid(of.createMessageIdentity());
-//					m.getMsgid().setProcid(mProcID);
-//					synchronized(mMsgCounter)
-//					{
-//						m.getMsgid().setMsgseq(new BigInteger(mMsgCounter.toByteArray()));
-//						mMsgCounter = mMsgCounter.add(BigInteger.ONE);
-//					}
-//					m.setMsgtype(MessageType.LIST_CHANGE_REQUEST);
-//					m.setParam(change_list);
-//					/*
-//					 * <li> Insert it into the multicast send queue
-//					 */
-//					mMHandler.sendMulticastMessage(m);
-//					while (true)
-//					{
-//						/*
-//						 * Start the timer for timeout
-//						 */
-//						//mTimer.schedule(new TimeoutInterruptor(this), 5000);
-//						/**
-//						 * <li> Discard incoming messages and just wait for the NewList
-//						 */
-//						try
-//						{
-//							recv_msg = mRecvQueue.poll(miPollTimeout,TimeUnit.MILLISECONDS);
-//						} catch (InterruptedException ie)
-//						{
-//							// do nothing
-//						}
-//						if (recv_msg != null && 
-////								((ParamType)recv_msg.getParam()).getStatus() == ErrorType.VALID &&
-//								recv_msg.getMsgtype() == MessageType.NEW_LIST && 
-//								recv_msg.getParam() instanceof NewList)
-//						{
-//							nl_message = (NewList)recv_msg.getParam();
-//							if (nl_message.getNextToken().getIp().compareTo(mProcID.getIp()) ==  0 &&
-//									nl_message.getNextToken().getPort() == mProcID.getPort())
-//							{
-//								/**
-//								 * <li> If a new list message for this node is received, process the new viewid
-//								 * and members
-//								 */
-////								mViewID = new ViewIdentity();
-////								mViewID.setProcid(new ProcessIdentity());
-////								mViewID.getProcid().setIp(nl_message.getNewViewid().getProcid().getIp());
-////								mViewID.getProcid().setPort(nl_message.getNewViewid().getProcid().getPort());
-////								mViewID.setCounter(new BigInteger(nl_message.getNewViewid().getCounter().toByteArray()));
-//								mViewID = nl_message.getNewViewid();
-//								mGlobalTimestamp = nl_message.getTimestamp();
-//								iterator = nl_message.getMembers().iterator();
-//								while (iterator.hasNext())
-//								{
-//									mMembers.add((ProcessIdentity)iterator.next());
-//								
-//								}
-//								/**
-//								 * <li> add the New List message to the ordered queue
-//								 */
-//								recv_msg.setTimestamp(new BigInteger(mGlobalTimestamp.toByteArray()));
-//								mOrderedQueue.add(recv_msg);
-//								mNumberAcks++;
-//								mLatestACK = recv_msg;
-//								/**
-//								 * <li> Ask for missing data/s
-//								 */
-//								iterator = nl_message.getDataPackets().iterator();
-//								while (iterator.hasNext())
-//								{
-//									/**
-//									 * <li> Send a NACK
-//									 */
-//									nack_message = of.createNack();
-//									nack_message.setMissingMsgid((MessageIdentity)iterator.next());
-//									m = of.createMessage();
-//									m.setViewid(mViewID);
-//									m.setMsgid(of.createMessageIdentity());
-//									m.getMsgid().setProcid(mProcID);
-//									synchronized(mMsgCounter)
-//									{
-//										m.getMsgid().setMsgseq(new BigInteger(mMsgCounter.toByteArray()));
-//										mMsgCounter = mMsgCounter.add(BigInteger.ONE);
-//									}
-//									m.setMsgtype(MessageType.NACK);
-//									m.setParam(nack_message);
-//									retry = 0;
-//									startTime = System.currentTimeMillis();
-//									while (true)
-//									{
-//										mUHandler.sendUnicastMessage(m,recv_msg.getMsgid().getProcid().getIp(),
-//												recv_msg.getMsgid().getProcid().getPort() );
-//										try
-//										{
-//											temp_msg = mRecvQueue.poll(miPollTimeout,TimeUnit.MILLISECONDS);
-//										} catch (InterruptedException ie)
-//										{
-//											// do nothing
-//										}
-//										/**
-//										 * <li> Wait for the requested data message and ignore non-data messages
-//										 */
-//										if (temp_msg != null && 
-//											((ParamType)temp_msg.getParam()).getStatus() == ErrorType.VALID &&
-//											temp_msg.getMsgtype() != MessageType.NEW_LIST && 
-//											temp_msg.getMsgtype() != MessageType.ACK && 
-//											temp_msg.getMsgtype() != MessageType.CONFIRM &&
-//											temp_msg.getMsgtype() != MessageType.LIST_CHANGE_REQUEST &&
-//											temp_msg.getMsgtype() != MessageType.NACK)
-//										{
-//											/**
-//											 * <li> Ignore messages belonging to a different group
-//											 */
-//											if (compareViewID(temp_msg.getViewid(),mViewID) != 0)
-//											{
-//												continue;
-//											}
-//											/**
-//											 * <li> If this is the one we need, place it in the ordered queue.
-//											 */
-//											if (compareMsgID(temp_msg.getMsgid(), nack_message.getMissingMsgid()) == 0)
-//											{
-//												/**
-//												 * No need to add timestamp, assume it has one 
-//												 * because it is requested through NACK
-//												 */
-//												mOrderedQueue.add(temp_msg);
-//												mGlobalTimestamp = mGlobalTimestamp.add(BigInteger.ONE);
-//												break;
-//											}
-//											/**
-//											 * <li> Add other data messages to the unordered list
-//											 */
-//											mUnOrderedQueue.add(temp_msg);
-//											/* ToDo: Add retry to other site */
-//											if ((System.currentTimeMillis() - startTime) > miNackTimeout)
-//											{
-//												if (retry >= miMsgRetry) break;
-//											}
-//										}
-//									}
-//								}
-//								/**
-//								 * Send out confirmation
-//								 */
-//								
-//								break;
-//							}
-//						} 
-//						if ((System.currentTimeMillis() - startTime) > miJoinTimeout) 
-//						{
-//							if (retry >= miJoinRetry )
-//							 break;
-//							else
-//							{
-//								mMHandler.sendMulticastMessage(m);
-//								retry++;
-//							}							
-//						}
-//					}
-//					if (mViewID == null)
-//					{
-//						/**
-//						 * <li> Because no new list message is received, create own group
-//						 */
-//						mViewID = new ViewIdentity();
-//						mViewID.setProcid(mProcID);
-//						mViewID.setCounter(mViewCounter);
-//						/**
-//						 * add self to list of members
-//						 */
-//						mMembers.add(mProcID);
-//						/**
-//						 * add a new list message to self
-//						 */
-//						nl_message = of.createNewList();
-//						nl_message.setNewViewid(mViewID);
-//						nl_message.setTimestamp(new BigInteger("0")); // create first timestamp or message for this group
-//						nl_message.getMembers().add(mProcID);
-//						nl_message.setNextToken(mProcID);
-//						m = of.createMessage();
-//						m.setMsgid(of.createMessageIdentity());
-//						m.getMsgid().setProcid(mProcID);
-//						synchronized(mMsgCounter)
-//						{
-//							m.getMsgid().setMsgseq(new BigInteger(mMsgCounter.toByteArray()));
-//							mMsgCounter = mMsgCounter.add(BigInteger.ONE);
-//						}
-//						m.setMsgtype(MessageType.NEW_LIST);
-//						m.setTimestamp(nl_message.getTimestamp());
-//						m.setParam(nl_message);
-//						mOrderedQueue.add(m);
-//						mNumberAcks++;
-//						mLatestACK = m;
-//						mGlobalTimestamp = new BigInteger("0");
-//					}
-//					
-//					/**
-//					 * <li> Immediately participate in the ring
-//					 */
-//					synchronized(mStateLock)
-//					{
-//						mState = RMP_State.TOKEN;
-//						mStateLock.notifyAll(); // notify all who called connect()
-//					}					
+					System.out.println("CommManager State: Leaving the group");
+					mDebug.setStatus("Leaving the group");
+
+					/**
+					 * <li> If the only member of the group, just exit
+					 */
+					if (mMembers.size() <= 1)
+					{
+						// Signal main driver that it has completed
+						synchronized(MainDriver.UnloadLock)
+						{
+							CloseCommsFlag.set(true);
+							MainDriver.UnloadLock.notify();
+						}
+						//break;
+						return;
+					}
+					
+					if (leave_token_flag)
+					{
+						/**
+						 * <li> If currently the token site, send out a New List
+						 */
+						System.out.println("removing a member!");
+						// find and remove the member
+						iterator = mMembers.iterator();
+						while (iterator.hasNext())
+						{
+							if (mProcID.getIp().compareTo(recv_msg.getMsgid().getProcid().getIp()) == 0 &&
+									mProcID.getPort() == recv_msg.getMsgid().getProcid().getPort())
+							{
+								iterator.remove();
+								break;
+							}
+						}
+						
+						nl_message = of.createNewList();
+						// add members
+						iterator = mMembers.iterator();
+						while (iterator.hasNext())
+						{
+							nl_message.getMembers().add((ProcessIdentity)iterator.next());
+						}
+						// create new view id
+						nl_message.setNewViewid(new ViewIdentity());
+						nl_message.getNewViewid().setProcid(mProcID);
+						mViewCounter = mViewCounter.add(BigInteger.ONE);
+						nl_message.getNewViewid().setCounter(new BigInteger(mViewCounter.toByteArray()));
+						nl_message.setNextToken(getNextTokenSite());
+						mGlobalTimestamp = mGlobalTimestamp.add(BigInteger.ONE);
+						nl_message.setTimestamp(new BigInteger(mGlobalTimestamp.toByteArray()));
+						m = of.createMessage();
+						m.setMsgid(of.createMessageIdentity());
+						m.getMsgid().setProcid(mProcID);
+						synchronized(mMsgCounter)
+						{
+							m.getMsgid().setMsgseq(new BigInteger(mMsgCounter.toByteArray()));
+							mMsgCounter = mMsgCounter.add(BigInteger.ONE);
+						}
+						m.setMsgtype(MessageType.NEW_LIST);
+						m.setParam(nl_message);
+						m.setViewid(mViewID);
+						mMHandler.sendMulticastMessage(m);
+						startTime = System.currentTimeMillis();
+					}else
+					{
+						/**
+						 * <li> Only a member, so just create the change list message
+						 */
+						change_list = of.createChangeList();
+						change_list.setCommand(ChangeViewCommands.LEAVE);
+						m = of.createMessage();
+						m.setViewid(mViewID);
+						m.setMsgid(of.createMessageIdentity());
+						m.getMsgid().setProcid(mProcID);
+						synchronized(mMsgCounter)
+						{
+							m.getMsgid().setMsgseq(new BigInteger(mMsgCounter.toByteArray()));
+							mMsgCounter = mMsgCounter.add(BigInteger.ONE);
+						}
+						m.setMsgtype(MessageType.LIST_CHANGE_REQUEST);
+						m.setParam(change_list);
+						mMHandler.sendMulticastMessage(m);
+						startTime = System.currentTimeMillis();
+					}
+					while (true)
+					{
+						/**
+						 * <li> Discard incoming messages except for NewList and NACK
+						 */
+						try
+						{
+							recv_msg = mRecvQueue.poll(miPollTimeout,TimeUnit.MILLISECONDS);
+						} catch (InterruptedException ie)
+						{
+							// do nothing
+						}
+						if (recv_msg != null && 
+								recv_msg.getMsgtype() == MessageType.NEW_LIST && 
+								recv_msg.getParam() instanceof NewList)
+						{
+							nl_message = (NewList)recv_msg.getParam();
+							/**
+							 * <li> Check if it this site is still member of the group
+							 */
+							if (searchForMember(mProcID,nl_message.getMembers()) == -1)
+							{
+								// Signal main driver that it has completed
+								synchronized(MainDriver.UnloadLock)
+								{
+									CloseCommsFlag.set(true);
+									MainDriver.UnloadLock.notify();
+								}
+
+								/**
+								 * Send out confirmation
+								 */
+								break;
+							}
+						}else if (recv_msg != null && 
+								recv_msg.getMsgtype() == MessageType.NACK && 
+								recv_msg.getParam() instanceof Nack)
+						{
+							/**
+							 * <li> Respong to NACKs
+							 */
+						}
+						/* Periodically resend */
+						if ((System.currentTimeMillis() - startTime) > miLeaveTimeout) 
+						{
+							mMHandler.sendMulticastMessage(m);
+							startTime = System.currentTimeMillis();
+						}
+					}					
 					break;
 			}
 			/**
@@ -1380,7 +1642,7 @@ public class CommManager implements Runnable, CommInterface
 		 * </ul>
 		 * Begin deinitialization
 		 */
-		close();
+		//close();
 	}
 	
 	public void close()

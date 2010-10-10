@@ -94,6 +94,7 @@ public class SetupPanel extends JPanel implements ActionListener
 				System.out.println(e.toString());
 				e.printStackTrace();
 				mpMain.setStatus("Initialization Failed!");
+				MainDriver.ErrorFlag.set(true);
 				return;
 			}
 			// Start the reader/writer app

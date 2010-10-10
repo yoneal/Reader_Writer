@@ -41,8 +41,21 @@ public class MainFrame extends JFrame
 	{
 		public void windowClosing(WindowEvent we)
 		{
-			MainDriver.QuitFlag.set(true);
-			System.out.println("Application is now closing..");
+			synchronized(MainDriver.UnloadLock)
+			{
+				MainDriver.QuitFlag.set(true);
+				System.out.println("Application is now closing..");
+				if (MainDriver.ErrorFlag.get() == false)
+				{
+					try
+					{
+						MainDriver.UnloadLock.wait();
+					}catch (InterruptedException ie)
+					{
+						// do nothing
+					}
+				}
+			}
 			// Wait for communication handler to finish
 			System.exit(0);
 		}

@@ -181,7 +181,7 @@ public class UnicastHandler implements Runnable
 			/**
 			 * <li> Check if application is to be unloaded
 			 */
-			if (MainDriver.QuitFlag.get())
+			if (CommManager.CloseCommsFlag.get())
 			{
 				System.out.println("UnicastHandler: exiting loop");
 				break;
